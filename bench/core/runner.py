@@ -66,6 +66,9 @@ def register_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--kv-cache-dtype", default="auto",
                    dest="kv_cache_dtype",
                    help="vLLM kv_cache_dtype.")
+    p.add_argument("--load-format", default="dummy",
+                   dest="load_format",
+                   help="vLLM load_format. Default 'dummy' skips weight download.")
     p.add_argument("--seed", type=int, default=42,
                    help="Sampling seed for vLLM.")
     p.add_argument("--tick-seconds", type=float, default=1.0,
@@ -78,6 +81,12 @@ def register_args(p: argparse.ArgumentParser) -> None:
                    dest="log_level",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="Logger verbosity (default: INFO).")
+    p.add_argument("--enable-prefix-caching", action="store_true",
+                   default=True, dest="enable_prefix_caching",
+                   help="vLLM enable_prefix_caching (default: True).")
+    p.add_argument("--no-enable-prefix-caching", action="store_false",
+                   dest="enable_prefix_caching",
+                   help="Disable vLLM prefix caching.")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -157,6 +166,8 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
         dtype=args.dtype,
         kv_cache_dtype=args.kv_cache_dtype,
         seed=args.seed,
+        load_format=args.load_format,
+        enable_prefix_caching=args.enable_prefix_caching,
         disable_log_stats=False,
     )
     engine_kwargs_for_meta = _engine_kwargs_for_meta(engine_args)

@@ -1,0 +1,121 @@
+[0;36m
+============================================================
+  Memory & Communication Benchmark Suite
+  2026-06-08 16:42:27
+============================================================
+[0m
+[1;33m[System Info][0m
+  Hostname: ubuntu22
+  Kernel:   6.8.0-124-generic
+  CPU:      Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz
+  Cores:    16
+  Memory:   49.3 GB
+
+  GPU 0:      NVIDIA GeForce RTX 3090 ( 24576 MiB)
+
+[1;33m[Build][0m
+make: 进入目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+nvcc -O3 -arch=native -Xcompiler "-fopenmp" -o ../bin/gpu_bench gpu_bench.cu -lm
+All benchmarks built in ../bin/
+make: 离开目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+[0;32m  Build OK[0m
+
+-----------------------------------------------------
+STREAM Bandwidth Benchmark
+Array size = 40000000 elements (320 MB each)
+NTIMES = 20
+-----------------------------------------------------
+Operation      Time(ms)         MB/s         GB/s
+-----------------------------------------------------
+COPY              0.004 167772160.0  167772.16
+SCALE             0.004 167772160.0  167772.16
+ADD               0.004 251658240.0  251658.24
+TRIAD             0.004 251658240.0  251658.24
+-----------------------------------------------------
+============================================================
+CPU Memory Latency Benchmark (Pointer Chasing)
+============================================================
+
+  Sequential access (64B stride) (stride=64, freq=2.10 GHz):
+        16 KB	    4.3 cycles	   2.0 ns
+        64 KB	   10.2 cycles	   4.9 ns
+       256 KB	   10.4 cycles	   4.9 ns
+       512 KB	   10.3 cycles	   4.9 ns
+      2048 KB	   10.9 cycles	   5.2 ns
+      8192 KB	   11.1 cycles	   5.3 ns
+     16384 KB	   11.0 cycles	   5.2 ns
+     32768 KB	   13.9 cycles	   6.6 ns
+     65536 KB	   19.0 cycles	   9.1 ns
+    131072 KB	   17.8 cycles	   8.5 ns
+    262144 KB	   19.7 cycles	   9.4 ns
+  Page-level random (4KB stride) (stride=4096, freq=2.10 GHz):
+        16 KB	    4.3 cycles	   2.0 ns
+        64 KB	   10.4 cycles	   5.0 ns
+       256 KB	   11.0 cycles	   5.2 ns
+       512 KB	   17.9 cycles	   8.5 ns
+      2048 KB	   55.2 cycles	  26.3 ns
+      8192 KB	   65.1 cycles	  31.1 ns
+     16384 KB	   82.7 cycles	  39.5 ns
+     32768 KB	   88.8 cycles	  42.4 ns
+     65536 KB	  142.7 cycles	  68.1 ns
+    131072 KB	  202.5 cycles	  96.6 ns
+    262144 KB	  222.8 cycles	 106.3 ns
+==========================================================
+GPU: NVIDIA GeForce RTX 3090
+Compute Capability: 8.6
+Global Memory: 25.3 GB
+SM Count: 82
+Max Clock Rate: 1.70 GHz
+Memory Clock Rate: 9.75 GHz
+Memory Bus Width: 384 bits
+L2 Cache: 6.3 MB
+PCIe Gen: 0, NumLink: 0
+==========================================================
+
+==========================================
+GPU Device-to-Device Bandwidth
+==========================================
+       17 MB:     0.047 ms     714.4 GB/s
+       67 MB:     0.166 ms     808.8 GB/s
+      268 MB:     0.636 ms     844.0 GB/s
+      537 MB:     1.266 ms     848.1 GB/s
+     1074 MB:     2.521 ms     851.8 GB/s
+
+==========================================
+GPU Device Memory Latency (Pointer Chasing)
+==========================================
+       32 KB:    248 cycles    177.1 ns
+      128 KB:    247 cycles    176.4 ns
+     1024 KB:    490 cycles    350.0 ns
+     4096 KB:    490 cycles    350.0 ns
+    16384 KB:    490 cycles    350.0 ns
+    65536 KB:    489 cycles    349.3 ns
+   262144 KB:    491 cycles    350.7 ns
+
+==========================================
+CPU-GPU Communication Bandwidth
+==========================================
+
+Size               H2D ms     H2D GB/s       D2H ms     D2H GB/s
+----------------------------------------------------------------
+       1 MB        1.087        1.0      0.145        7.2
+       8 MB        0.579       14.5      1.140        7.4
+      67 MB        6.309       10.6      8.808        7.6
+     268 MB       28.489        9.4     35.174        7.6
+
+==========================================
+CPU-GPU Communication Latency (small transfer)
+==========================================
+
+Bytes            H2D us       D2H us       RTT us
+-------------------------------------------------------
+  4               3.81       5.96       6.91
+  64              4.77       5.96       7.87
+  1024            4.77       5.96       7.87
+  4096            4.77       5.96       8.82
+  16384           6.91       7.87      11.92
+  65536          13.83      13.83      36.95
+  262144         29.80      39.82      89.88
+  1048576       105.86     141.86     303.98
+
+Done.

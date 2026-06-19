@@ -1,0 +1,120 @@
+[0;36m
+============================================================
+  Memory & Communication Benchmark Suite
+  2026-06-08 16:42:58
+============================================================
+[0m
+[1;33m[System Info][0m
+  Hostname: ubuntu22
+  Kernel:   6.8.0-124-generic
+  CPU:      Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz
+  Cores:    16
+  Memory:   49.3 GB
+
+  GPU 0:      NVIDIA GeForce RTX 3090 ( 24576 MiB)
+
+[1;33m[Build][0m
+make: 进入目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+All benchmarks built in ../bin/
+make: 离开目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+[0;32m  Build OK[0m
+
+-----------------------------------------------------
+STREAM Bandwidth Benchmark
+Array size = 40000000 elements (320 MB each)
+NTIMES = 20
+-----------------------------------------------------
+Operation      Time(ms)         MB/s         GB/s
+-----------------------------------------------------
+COPY              0.004 167772160.0  167772.16
+SCALE             0.004 167772160.0  167772.16
+ADD               0.004 236854814.1  236854.81
+TRIAD             0.004 251658240.0  251658.24
+-----------------------------------------------------
+============================================================
+CPU Memory Latency Benchmark (Pointer Chasing)
+============================================================
+
+  Sequential access (64B stride) (stride=64, freq=2.10 GHz):
+        16 KB	    4.3 cycles	   2.0 ns
+        64 KB	   10.2 cycles	   4.9 ns
+       256 KB	   10.3 cycles	   4.9 ns
+       512 KB	   10.4 cycles	   5.0 ns
+      2048 KB	   10.6 cycles	   5.0 ns
+      8192 KB	   10.7 cycles	   5.1 ns
+     16384 KB	   11.0 cycles	   5.3 ns
+     32768 KB	   14.2 cycles	   6.8 ns
+     65536 KB	   18.0 cycles	   8.6 ns
+    131072 KB	   18.4 cycles	   8.8 ns
+    262144 KB	   19.3 cycles	   9.2 ns
+  Page-level random (4KB stride) (stride=4096, freq=2.10 GHz):
+        16 KB	    4.3 cycles	   2.0 ns
+        64 KB	   10.6 cycles	   5.1 ns
+       256 KB	   12.4 cycles	   5.9 ns
+       512 KB	   18.1 cycles	   8.7 ns
+      2048 KB	   51.3 cycles	  24.5 ns
+      8192 KB	   66.1 cycles	  31.6 ns
+     16384 KB	   82.7 cycles	  39.5 ns
+     32768 KB	   87.0 cycles	  41.5 ns
+     65536 KB	  145.0 cycles	  69.2 ns
+    131072 KB	  214.9 cycles	 102.6 ns
+    262144 KB	  232.7 cycles	 111.1 ns
+==========================================================
+GPU: NVIDIA GeForce RTX 3090
+Compute Capability: 8.6
+Global Memory: 25.3 GB
+SM Count: 82
+Max Clock Rate: 1.70 GHz
+Memory Clock Rate: 9.75 GHz
+Memory Bus Width: 384 bits
+L2 Cache: 6.3 MB
+PCIe Gen: 0, NumLink: 0
+==========================================================
+
+==========================================
+GPU Device-to-Device Bandwidth
+==========================================
+       17 MB:     0.047 ms     714.4 GB/s
+       67 MB:     0.165 ms     813.5 GB/s
+      268 MB:     0.637 ms     843.1 GB/s
+      537 MB:     1.266 ms     848.1 GB/s
+     1074 MB:     2.520 ms     852.2 GB/s
+
+==========================================
+GPU Device Memory Latency (Pointer Chasing)
+==========================================
+       32 KB:    248 cycles    177.1 ns
+      128 KB:    248 cycles    177.1 ns
+     1024 KB:    492 cycles    351.4 ns
+     4096 KB:    492 cycles    351.4 ns
+    16384 KB:    492 cycles    351.4 ns
+    65536 KB:    491 cycles    350.7 ns
+   262144 KB:    493 cycles    352.1 ns
+
+==========================================
+CPU-GPU Communication Bandwidth
+==========================================
+
+Size               H2D ms     H2D GB/s       D2H ms     D2H GB/s
+----------------------------------------------------------------
+       1 MB        1.095        1.0      0.112        9.4
+       8 MB        0.595       14.1      1.144        7.3
+      67 MB        6.652       10.1      8.825        7.6
+     268 MB       28.348        9.5     35.445        7.6
+
+==========================================
+CPU-GPU Communication Latency (small transfer)
+==========================================
+
+Bytes            H2D us       D2H us       RTT us
+-------------------------------------------------------
+  4               3.81       5.96       6.91
+  64              4.05       5.96       6.91
+  1024            4.77       5.96       7.87
+  4096            4.77       5.96       7.87
+  16384           5.96       6.91      11.92
+  65536          12.87      11.92      33.86
+  262144         48.88      30.99      92.98
+  1048576       179.77     105.86     321.87
+
+Done.

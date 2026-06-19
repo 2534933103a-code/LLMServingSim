@@ -194,9 +194,15 @@ class Scheduler:
                 # preempt request one by one until there is enough space
                 if len(gen_req) == 0:
                     return None
-                
+
                 # check already evicted request
                 if gen_req[-1].evict:
+                    gen_req = gen_req[:-1]
+                    continue
+
+                # Skip requests that haven't had KV cache allocated yet
+                # (newly transferred from prefill or never scheduled)
+                if not gen_req[-1].decode_kv_allocated:
                     gen_req = gen_req[:-1]
                     continue
 
@@ -246,8 +252,18 @@ class Scheduler:
             # ============ STEP 4: Allocate memory ============
             if kv_size > 0:
                 self.memory.allocate(kv_size, Device.NPU)
+                # Mark decode-side KV cache as allocated for batched
+                # decode requests.  Prefill requests are NOT marked here
+                # — their KV is allocated on the prefill instance and
+                # they may later be transferred to a decode instance in
+                # PD mode, where the flag must remain False.
+                for req in batch_req:
+                    if not req.is_prefill():
+                        req.decode_kv_allocated = True
 
             # Reload evicted KV to NPU and remove the spilled copy from CPU.
+            # load_size (via get_block_kv) already includes all blocks for
+            # evicted requests, so no separate NPU allocate is needed.
             # load_size is per-rank, cpu_used is full-cluster.
             if load_size > 0:
                 self.memory.allocate(load_size, Device.NPU)
@@ -487,7 +503,12 @@ class Scheduler:
                 if gen_req[-1].evict:
                     gen_req = gen_req[:-1]
                     continue
-                
+
+                # Skip requests that haven't had KV cache allocated yet
+                if not gen_req[-1].decode_kv_allocated:
+                    gen_req = gen_req[:-1]
+                    continue
+
                 # Evict the last decode request
                 # (DEPRECATED) self.memory.unlock_prefix(gen_req[-1], Device.NPU)
                 # (DEPRECATED) self.memory.erase_prefix_info(gen_req[-1])
@@ -623,6 +644,10 @@ class Scheduler:
             # For debugging
             # self.memory.npu_prefix_cache.pretty_print()
             # self.memory.npu_prefix_cache.print_prefix_info()
+            # Mark decode-side KV cache as allocated for batched decode requests
+            for req in batch_req:
+                if not req.is_prefill():
+                    req.decode_kv_allocated = True
             batch = Batch(self.get_batch_id(), self.model, total_len, kv_len, q_list, k_list, num_prefill, num_decode, prefill_q_list, prefill_k_list, decode_k_list, current, kv_size, evict_size, evict_load_size + prefix_load_size)
             batch.fired.append(sys)
             batch.requests.extend(batch_req)
@@ -740,6 +765,9 @@ class Scheduler:
                     else:
                         # Non-PD: prefill complete, first output token generated
                         # The last prefill token passing through lm_head generates the first output
+                        # KV cache was already allocated during prefill — mark decode-side
+                        # allocation as done so get_block_kv() won't double-count.
+                        req.decode_kv_allocated = True
                         gen_t += 1
                         # req.num_computed_tokens += 1  # Count the first generated token
                         # req.set_ttft(finish)
@@ -828,17 +856,15 @@ class Scheduler:
     # add decode request to decode instance from prefill instnace
     def add_decode(self, req):
         req.instance_id = self.instance_id
+        # Defer KV cache allocation to schedule_base(), which has proper
+        # memory checking and eviction logic.  get_block_kv() recognises
+        # the request via the decode_kv_allocated flag and includes the
+        # full prefill KV in the allocation batch.
+        # Reset the flag: the same request object may have had it set to
+        # True on the prefill instance (by schedule_base), but on the
+        # decode instance no KV has been allocated yet.
+        req.decode_kv_allocated = False
         self.request.append(req)
-        if self.enable_prefix_caching:
-            self.memory.prefix_match(req)
-            kv_size = self.memory.get_evict_kv(req)
-            evict_size = max(0, kv_size - self.memory.avail_size(Device.NPU))
-            if evict_size > 0:
-                self.memory.evict_prefix_cache(evict_size, Device.NPU)
-            self.memory.cache_unfinished_req(req, Device.NPU)
-        else:
-            kv_size = self.memory.get_total_kv(req)
-            self.memory.allocate(kv_size, Device.NPU)
     
     # get first request's arrival time
     def get_first_arrival_time(self):

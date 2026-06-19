@@ -19,3 +19,9 @@ bench/results/
 .copilot/
 .aider*
 .continue/
+
+outputs/
+
+profiler/perf/
+
+configs/

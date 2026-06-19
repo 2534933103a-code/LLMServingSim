@@ -189,8 +189,11 @@ class MemoryModel():
                 
                 # Calculate blocks needed (cumulative)
                 blocks_after = (total_after + self.block_size - 1) // self.block_size
-                blocks_before = (computed_before + self.block_size - 1) // self.block_size if computed_before > 0 else 0
-                
+                if req.evict:
+                    # All blocks were freed during eviction; need to reload everything
+                    blocks_before = 0
+                else:
+                    blocks_before = (computed_before + self.block_size - 1) // self.block_size if computed_before > 0 else 0
                 
                 new_blocks = max(0, blocks_after - blocks_before)
                 block_kv_size += self.get_kv(new_blocks * self.block_size)
@@ -198,12 +201,21 @@ class MemoryModel():
                 #     hit, tokens_this_step, computed_before, total_after, new_blocks, block_kv_size
                 # ))
             else:
-                # Decode: use num_computed_tokens (or input for backwards compat)
+                # Decode: use num_computed_tokens
                 computed = req.num_computed_tokens
-                num_before = (computed + self.block_size - 1) // self.block_size if computed > 0 else 0
-                num_after = (computed + 1 + self.block_size - 1) // self.block_size
-                if num_after > num_before: # difference of the block is maximum one block
-                    block_kv_size += self.get_kv(self.block_size)
+                if not req.decode_kv_allocated:
+                    # Initial allocation for a request transferred from prefill
+                    # (PD disaggregation).  Allocate the full KV cache for the
+                    # prefill output plus room for one decode step, mirroring
+                    # what add_decode() used to do eagerly.
+                    num_blocks = (computed + 1 + self.block_size - 1) // self.block_size
+                    block_kv_size += self.get_kv(num_blocks * self.block_size)
+                else:
+                    # Incremental: at most 1 new block per decode step
+                    num_before = (computed + self.block_size - 1) // self.block_size if computed > 0 else 0
+                    num_after = (computed + 1 + self.block_size - 1) // self.block_size
+                    if num_after > num_before:
+                        block_kv_size += self.get_kv(self.block_size)
         return block_kv_size
     
     # get size of kv cache that should be evicted

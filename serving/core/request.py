@@ -39,6 +39,10 @@ class Request:
         self.session_id = None
         self.sub_request_index = None
 
+        # For PD disaggregation: tracks whether initial decode-side KV cache
+        # has been allocated on this instance. Set to True after allocation.
+        self.decode_kv_allocated = False
+
     # to print the request information
     def __str__(self):
         return str(self.__dict__) 

@@ -1,0 +1,111 @@
+profiler_version: 1.0.0
+vllm_version: 0.19.0
+cuda_version: '12.9'
+gpu: NVIDIA GeForce RTX 3090
+hardware: RTX3090
+profiled_at: '2026-06-10T04:51:37+00:00'
+architecture: llama
+architecture_sha256: 19d708000ec8a89edf1ca12dd388235b2cfe59007aaec6ea48702fb856ff2cfb
+model: meta-llama/Llama-2-7b-hf
+variant: fp16
+tp_degrees: [1, 2, 4, 8, 16]
+engine_effective:
+  load_format: dummy
+  enforce_eager: true
+  skip_tokenizer_init: true
+  enable_prefix_caching: false
+  generation_config: vllm
+  tensor_parallel_size: 1
+  block_size: 16
+  gpu_memory_utilization: 0.9
+  max_num_batched_tokens: 32768
+  max_num_seqs: 256
+  hf_overrides:
+    num_hidden_layers: 1
+    intermediate_size: 688
+    num_attention_heads: 2
+    num_key_value_heads: 2
+    vocab_size: 2000
+  worker_extension_cls: profiler.core.hooks.extension.Extension
+  model: /tmp/profiler_model_y4r13879
+attention_grid:
+  max_kv: 4096
+  chunk_factor: 2.0
+  kv_factor: 2.0
+  chunks: 0, 16-32768 x2
+  n_decode: 0, 1-256 x2
+  kv: 0, 16-4096 x2
+measurement_iterations: 3
+skew_profile:
+  enabled: true
+  factors:
+    n: 2.0
+    pc: 2.0
+    kp: 2.0
+    kvs: 2.0
+  grid:
+    n: 2-256 x2
+    ratio: [0.0625, 0.125, 0.25, 0.5, 0.75, 0.9]
+    pc: 0, 16-32768 x2
+    kp: 0, 512-2048 x2
+    kvs: 128-4096 x2
+    skew_rep: 4.0
+skew_fit:
+  enabled: true
+  bucket_axes:
+    pc: raw pc value (profiled grid point)
+    n_bins: [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 984, 1000000]
+    n_labels: [n<=2, n<=4, n<=8, n<=16, n<=32, n<=64, n<=128, n<=256, n<=512, n<=984,
+      n>984]
+    skew_rate_bins: [-0.01, 0.05, 0.15, 0.4, 0.7, 1.01]
+    skew_rate_labels: [sr<=5%, sr<=15%, sr<=40%, sr<=70%, sr>70%]
+    kv_big_bins: [0, 1024, 2048, 1000000000]
+    kv_big_labels: [kvB<=1k, kvB<=2k, kvB>2k]
+    kp_bins: [-1, 0, 512, 1024, 2048, 1000000000]
+    kp_labels: [kp=0, kp<=512, kp<=1k, kp<=2k, kp>2k]
+  per_tp:
+    1:
+      method: per_bucket_wls_5axis
+      n_samples: 4560
+      alpha_default: 0.0302
+      bucket_table: tp1/skew_fit.csv
+      rel_err_p50: 0.0122
+      rel_err_p90: 0.0487
+      rel_err_p99: 0.2087
+      signed_mean: -0.0026
+    2:
+      method: per_bucket_wls_5axis
+      n_samples: 4571
+      alpha_default: 0.0343
+      bucket_table: tp2/skew_fit.csv
+      rel_err_p50: 0.0106
+      rel_err_p90: 0.0468
+      rel_err_p99: 0.1862
+      signed_mean: .inf
+    4:
+      method: per_bucket_wls_5axis
+      n_samples: 4545
+      alpha_default: 0.0353
+      bucket_table: tp4/skew_fit.csv
+      rel_err_p50: 0.0083
+      rel_err_p90: 0.0437
+      rel_err_p99: 0.2395
+      signed_mean: 0.0007
+    8:
+      method: per_bucket_wls_5axis
+      n_samples: 4440
+      alpha_default: 0.0601
+      bucket_table: tp8/skew_fit.csv
+      rel_err_p50: 0.0053
+      rel_err_p90: 0.0491
+      rel_err_p99: 0.3979
+      signed_mean: .nan
+    16:
+      method: per_bucket_wls_5axis
+      n_samples: 4293
+      alpha_default: 0.0339
+      bucket_table: tp16/skew_fit.csv
+      rel_err_p50: 0.0022
+      rel_err_p90: 0.037
+      rel_err_p99: 0.1536
+      signed_mean: .inf

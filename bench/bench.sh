@@ -19,18 +19,19 @@ cd "$REPO_ROOT"
 # =============================================================================
 # EDIT THESE
 # =============================================================================
-MODEL="${MODEL:-Qwen/Qwen3-32B}"
-DATASET="${DATASET:-workloads/sharegpt-qwen3-32b-300-sps10.jsonl}"
+MODEL="${MODEL:-meta-llama/Llama-2-7b-hf}"
+DATASET="${DATASET:-workloads/myllama-2-7b.jsonl}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-bench/results/$RUN_ID}"
 
-TP="${TP:-2}"
+TP="${TP:-1}"
 DP="${DP:-1}"
-MAX_NUM_SEQS="${MAX_NUM_SEQS:-128}"
+MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-2048}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-}"   # blank => use the model default
-DTYPE="${DTYPE:-bfloat16}"
+DTYPE="${DTYPE:-float16}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-auto}"
+LOAD_FORMAT="${LOAD_FORMAT:-dummy}"  # 'auto' to download real weights
 SEED="${SEED:-42}"
 TICK_SECONDS="${TICK_SECONDS:-1.0}"
 NUM_REQS="${NUM_REQS:-0}"            # 0 => replay the full dataset
@@ -53,10 +54,12 @@ cmd=(python3 -m bench run
     --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS"
     --dtype "$DTYPE"
     --kv-cache-dtype "$KV_CACHE_DTYPE"
+    --load-format "$LOAD_FORMAT"
     --seed "$SEED"
     --tick-seconds "$TICK_SECONDS"
     --num-reqs "$NUM_REQS"
     --log-level "$LOG_LEVEL"
+    --no-enable-prefix-caching
 )
 
 [[ -n "$MAX_MODEL_LEN" ]] && cmd+=(--max-model-len "$MAX_MODEL_LEN")

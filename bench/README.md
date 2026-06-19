@@ -1,50 +1,48 @@
 # bench
 
-End-to-end vLLM benchmark + simulator validation. Runs a real vLLM
-serving workload, captures per-request timing and per-tick scheduler
-state, and compares the result against the simulator's output for the
-same dataset.
+端到端 vLLM 基准测试 + 仿真器验证。运行真实 vLLM serving 负载，
+采集每个请求的时序和每 tick 的调度器状态，并将结果与仿真器对
+同一数据集的输出进行对比。
 
-## Layout
+## 目录结构
 
 ```
-bench/                          Python package — `python -m bench ...`
-├── __init__.py                 package marker + module map
-├── __main__.py                 CLI dispatch (run / validate)
-├── core/                       internals
-│   ├── runner.py               AsyncLLM driver, captures RequestStateStats
-│   ├── recorder.py             writes meta.json / requests.jsonl / timeseries.csv
-│   ├── stat_logger.py          custom vLLM StatLoggerBase that fills timeseries
-│   ├── validate.py             bench-vs-sim comparison entry point
-│   ├── plots.py                throughput / running-waiting / latency-CDF helpers
-│   └── logger.py               Rich-based logger + stdio capture
-├── bench.sh                    host-side ``python -m bench run`` wrapper
-├── validate.sh                 host-side ``python -m bench validate`` wrapper
-├── examples/                   canonical end-to-end runs (committed artifacts)
-│   ├── configs/<model>.json    cluster config used by the simulator side
-│   ├── <model>/vllm/           vLLM bench artifacts (meta.json, requests.jsonl, timeseries.csv)
-│   ├── <model>/outputs/        simulator output (sim.csv, sim.log)
-│   ├── <model>/validation/     `bench validate` output (PDFs + summary.txt)
-│   ├── run.sh                  rerun the simulator side for any/all examples
-│   └── validate.sh             rerun the validation step for any/all examples
-└── results/                    output root for ad-hoc runs: bench/results/<run_id>/
+bench/                          Python 包 — `python -m bench ...`
+├── __init__.py                 包标记 + 模块映射
+├── __main__.py                 CLI 调度（run / validate）
+├── core/                       内部实现
+│   ├── runner.py               AsyncLLM 驱动，采集 RequestStateStats
+│   ├── recorder.py             写入 meta.json / requests.jsonl / timeseries.csv
+│   ├── stat_logger.py          自定义 vLLM StatLoggerBase，填充 timeseries
+│   ├── validate.py             bench-vs-sim 对比入口
+│   ├── plots.py                吞吐量 / running-waiting / 延迟-CDF 绘图工具
+│   └── logger.py               Rich 日志 + 标准输出捕获
+├── bench.sh                    主机侧 ``python -m bench run`` 包装脚本
+├── validate.sh                 主机侧 ``python -m bench validate`` 包装脚本
+├── examples/                   标准端到端运行示例（已提交的产物）
+│   ├── configs/<model>.json    仿真器侧使用的 cluster config
+│   ├── <model>/vllm/           vLLM bench 产物（meta.json, requests.jsonl, timeseries.csv）
+│   ├── <model>/outputs/        仿真器输出（sim.csv, sim.log）
+│   ├── <model>/validation/     `bench validate` 输出（PDF + summary.txt）
+│   ├── run.sh                  重跑部分或全部示例的仿真器侧
+│   └── validate.sh             重跑部分或全部示例的验证步骤
+└── results/                    临时运行输出根目录：bench/results/<run_id>/
 ```
 
-## Usage
+## 用法
 
-`bench run` — strict replay of an existing dataset
+### `bench run` — 对已有数据集进行严格回放
 
-The runner reads a LLMServingSim-format JSONL (the same format
-`python -m workloads.generators` produces and `python -m serving --dataset`
-consumes). Each request's `input_tok_ids` and `output_toks` are pinned via
-`SamplingParams(min_tokens=N, max_tokens=N, ignore_eos=True)`, so the
-vLLM run is bit-for-bit comparable to the simulator's view of the same
-workload.
+Runner 读取 LLMServingSim 格式的 JSONL（与 `python -m workloads.generators`
+生成、`python -m serving --dataset` 消费的格式相同）。每个请求的
+`input_tok_ids` 和 `output_toks` 通过
+`SamplingParams(min_tokens=N, max_tokens=N, ignore_eos=True)` 固定，
+确保 vLLM 运行结果与仿真器对同一负载的视角可以逐位对比。
 
 ```bash
-# Inside the vLLM container (scripts/docker-vllm.sh).
+# 在 vLLM 容器内（scripts/docker-vllm.sh）。
 ./bench/bench.sh
-# or invoke the module directly with explicit args:
+# 或直接调用模块并显式传参：
 python -m bench run \
     --model <hf-id-or-path> \
     --dataset workloads/<workload>.jsonl \
@@ -54,12 +52,11 @@ python -m bench run \
     --dtype bfloat16 --kv-cache-dtype auto
 ```
 
-`bench validate` — compare a finished bench run against simulator output
+### `bench validate` — 将已完成的 bench 运行结果与仿真器输出对比
 
-Loads the bench artifacts plus the simulator's `sim.csv` / `sim.log`
-for the same workload, computes TTFT / TPOT / end-to-end latency on
-both sides under matched definitions, and writes plots + a numeric
-summary into a subdirectory of the bench run.
+加载 bench 产物以及同一负载的仿真器 `sim.csv` / `sim.log`，
+在统一定义下计算双方的 TTFT / TPOT / 端到端延迟，
+并将图表和数值汇总写入 bench 运行的子目录中。
 
 ```bash
 ./bench/validate.sh \
@@ -69,75 +66,72 @@ summary into a subdirectory of the bench run.
     [prefix]
 ```
 
-## Output schema (one bench run)
+## 输出格式（单次 bench run）
 
 ```
 bench/results/<run_id>/
-  meta.json            run metadata (model, vLLM version, engine kwargs,
-                       dataset hash, wall-clock start/end)
-  requests.jsonl       per-request timing — request_id, input_toks,
+  meta.json            运行元数据（模型、vLLM 版本、engine 参数、
+                       数据集哈希、挂钟开始/结束时间）
+  requests.jsonl       每个请求的时序 — request_id, input_toks,
                        output_toks, arrival_time, queued_ts, scheduled_ts,
                        first_token_ts, last_token_ts
-  timeseries.csv       per-tick aggregates — t, prompt_throughput,
+  timeseries.csv       每 tick 聚合 — t, prompt_throughput,
                        gen_throughput, running, waiting, kv_cache_pct
-  validation/          (created by `bench validate`)
+  validation/          （由 `bench validate` 创建）
     <prefix>_throughput.png
     <prefix>_requests.png
     <prefix>_latency.png
     <prefix>_summary.txt
 ```
 
-## Latency definitions (sim ↔ bench)
+## 延迟定义（sim ↔ bench）
 
-Both sides report TTFT, TPOT, and end-to-end latency from the same
-reference points so diff% is meaningful:
+双方基于相同的参考点上报 TTFT、TPOT 和端到端延迟，
+因此 diff% 具有可比意义：
 
-| Metric | Definition |
+| 指标 | 定义 |
 | --- | --- |
-| `TTFT`     | `first_token_ts - arrival_time` (incl. queueing) |
+| `TTFT`     | `first_token_ts - arrival_time`（含排队等待） |
 | `TPOT`     | `(last_token_ts - first_token_ts) / max(1, output_toks - 1)` |
 | `Latency`  | `last_token_ts - arrival_time` |
 
-The simulator's `sim.csv` exposes `arrival`, `end_time`, and a per-token
-ITL list directly; bench computes the same fields from vLLM's
-`RequestStateStats` (`vllm/v1/metrics/stats.py`).
+仿真器的 `sim.csv` 直接暴露 `arrival`、`end_time` 以及每个 token
+的 ITL 列表；bench 从 vLLM 的 `RequestStateStats`
+（`vllm/v1/metrics/stats.py`）计算相同字段。
 
-## Canonical examples (`bench/examples/`)
+## 标准示例（`bench/examples/`）
 
-Three end-to-end validation runs are committed under `bench/examples/`,
-covering a dense single-GPU baseline, a TP=2 dense run, and a DP+EP MoE
-run. Each example bundles the vLLM bench artifacts, the simulator
-output, and the resulting `bench validate` summary + plots.
+`bench/examples/` 下提交了三组端到端验证运行，覆盖 dense 单 GPU
+基线、TP=2 dense 运行以及 DP+EP MoE 运行。每个示例包含 vLLM bench
+产物、仿真器输出以及对应的 `bench validate` 汇总 + 图表。
 
-| Example | Parallelism | Workload (300 reqs) | TTFT mean | TPOT mean | Latency mean |
+| 示例 | 并行策略 | 负载（300 请求） | TTFT 均值 | TPOT 均值 | Latency 均值 |
 | --- | --- | --- | --- | --- | --- |
 | `Llama-3.1-8B`                | TP=1 dense              | `sharegpt-llama-3.1-8b-300-sps10.jsonl`     | -2.8% | -0.3% | -1.0% |
 | `Qwen3-32B`                   | TP=2 dense              | `sharegpt-qwen3-32b-300-sps10.jsonl`        | -0.7% | -0.3% | -0.4% |
 | `Qwen3-30B-A3B-Instruct-2507` | DP=2, EP=2 MoE          | `sharegpt-qwen3-30b-a3b-300-sps10.jsonl`    | -2.9% | +0.6% | +0.4% |
 
-Diff% is `(sim - vLLM) / vLLM × 100`. All three runs are on RTXPRO6000
-with `bf16` weights, `max_num_seqs=128`, `max_num_batched_tokens=2048`,
-`block_size=16`, and the workloads are generated by
-`python -m workloads.generators` (ShareGPT, single-turn, vLLM
-free-generation mode). Per-percentile breakdowns
-(P50 / P90 / P95 / P99) live in each
-`bench/examples/<model>/validation/summary.txt`.
+Diff% 公式为 `(sim - vLLM) / vLLM × 100`。三组运行均在 RTXPRO6000
+上进行，使用 `bf16` 权重，`max_num_seqs=128`，`max_num_batched_tokens=2048`，
+`block_size=16`，负载由 `python -m workloads.generators` 生成
+（ShareGPT，单轮对话，vLLM 自由生成模式）。各百分位细分数据
+（P50 / P90 / P95 / P99）见各
+`bench/examples/<model>/validation/summary.txt`。
 
-Reproducing a canonical example:
+复现标准示例：
 
 ```bash
-# Inside the simulator container:
-./bench/examples/run.sh                       # all three examples
-./bench/examples/run.sh Qwen3-30B-A3B-Instruct-2507   # single example
+# 在仿真器容器内：
+./bench/examples/run.sh                       # 全部三个示例
+./bench/examples/run.sh Qwen3-30B-A3B-Instruct-2507   # 单个示例
 
-# Then validate against the committed vLLM artifacts:
+# 然后与已提交的 vLLM 产物进行验证：
 ./bench/examples/validate.sh
 ./bench/examples/validate.sh Qwen3-30B-A3B-Instruct-2507
 ```
 
-`run.sh` reads each example's `meta.json` (engine kwargs + dataset path)
-and the matching cluster config under `bench/examples/configs/`, so the
-simulator runs against the exact same workload and engine configuration
-as the original vLLM bench. To regenerate the vLLM side from scratch,
-use `bench/bench.sh` (or `python -m bench run`) from inside the vLLM
-container.
+`run.sh` 读取每个示例的 `meta.json`（engine 参数 + 数据集路径）
+以及 `bench/examples/configs/` 下对应的 cluster config，因此
+仿真器能够针对与原始 vLLM bench 完全相同的负载和 engine 配置
+运行。如需从头重新生成 vLLM 侧数据，在 vLLM 容器内使用
+`bench/bench.sh`（或 `python -m bench run`）。

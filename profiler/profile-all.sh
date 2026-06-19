@@ -11,21 +11,29 @@
 
 set -euo pipefail
 
-HARDWARE="${HARDWARE:-RTXPRO6000}"
-TP_DEGREES="${TP_DEGREES:-1,2}"
-MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-2048}"
+HARDWARE="${HARDWARE:-RTX3090}"
+TP_DEGREES="${TP_DEGREES:-1,2,4,8}"
+MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-32768}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"
-ATTENTION_MAX_KV="${ATTENTION_MAX_KV:-16384}"
+ATTENTION_MAX_KV="${ATTENTION_MAX_KV:-40960}"
 ATTENTION_CHUNK_FACTOR="${ATTENTION_CHUNK_FACTOR:-2.0}"
 ATTENTION_KV_FACTOR="${ATTENTION_KV_FACTOR:-2.0}"
 # Timed forwards per shot (averaged). N=3 tames single-sample DVFS
 # jitter (~15-25% on large GEMMs → ~5%) at ~3x profile time.
 MEASUREMENT_ITERATIONS="${MEASUREMENT_ITERATIONS:-3}"
 
+SKEW_N_FACTOR="${SKEW_N_FACTOR:-2.0}"
+SKEW_PC_FACTOR="${SKEW_PC_FACTOR:-2.0}"
+SKEW_KP_FACTOR="${SKEW_KP_FACTOR:-4.0}"
+SKEW_KVS_FACTOR="${SKEW_KVS_FACTOR:-4.0}"
+
 MODELS=(
-    "Qwen/Qwen3-32B"
-    "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    "meta-llama/Llama-3.1-8B"
+    "Qwen/Qwen3-4B"
+    # "Qwen/Qwen3-8B"
+    # "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    # "meta-llama/Llama-3.1-8B"
+    # "meta-llama/Llama-2-7b-hf"
+    # "meta-llama/Llama-2-13b-hf"
 )
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,13 +42,16 @@ cd "$REPO_ROOT"
 for MODEL in "${MODELS[@]}"; do
 
     cmd=(python3 -m profiler profile "$MODEL" --hardware "$HARDWARE")
-    cmd+=(--tp "$TP_DEGREES")
-    cmd+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
-    cmd+=(--max-num-seqs "$MAX_NUM_SEQS")
-    cmd+=(--attention-max-kv "$ATTENTION_MAX_KV")
-    cmd+=(--attention-chunk-factor "$ATTENTION_CHUNK_FACTOR")
-    cmd+=(--attention-kv-factor "$ATTENTION_KV_FACTOR")
-    cmd+=(--measurement-iterations "$MEASUREMENT_ITERATIONS")
+
+    [[ -n "${TP_DEGREES:-}" ]]             && cmd+=(--tp "$TP_DEGREES")
+    [[ -n "${DTYPE:-}" ]]                  && cmd+=(--dtype "$DTYPE")
+    [[ -n "${KV_CACHE_DTYPE:-}" ]]         && cmd+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
+    [[ -n "${MAX_NUM_BATCHED_TOKENS:-}" ]] && cmd+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
+    [[ -n "${MAX_NUM_SEQS:-}" ]]           && cmd+=(--max-num-seqs "$MAX_NUM_SEQS")
+    [[ -n "${ATTENTION_MAX_KV:-}" ]]       && cmd+=(--attention-max-kv "$ATTENTION_MAX_KV")
+    [[ -n "${ATTENTION_CHUNK_FACTOR:-}" ]] && cmd+=(--attention-chunk-factor "$ATTENTION_CHUNK_FACTOR")
+    [[ -n "${ATTENTION_KV_FACTOR:-}" ]]    && cmd+=(--attention-kv-factor "$ATTENTION_KV_FACTOR")
+    [[ -n "${MEASUREMENT_ITERATIONS:-}" ]] && cmd+=(--measurement-iterations "$MEASUREMENT_ITERATIONS")
     [[ -n "${SKIP_SKEW:-}" ]]              && cmd+=(--skip-skew)
     [[ -n "${SKEW_N_FACTOR:-}" ]]          && cmd+=(--skew-n-factor "$SKEW_N_FACTOR")
     [[ -n "${SKEW_PC_FACTOR:-}" ]]         && cmd+=(--skew-pc-factor "$SKEW_PC_FACTOR")
@@ -48,8 +59,6 @@ for MODEL in "${MODELS[@]}"; do
     [[ -n "${SKEW_KVS_FACTOR:-}" ]]        && cmd+=(--skew-kvs-factor "$SKEW_KVS_FACTOR")
     [[ -n "${ONLY_SKEW:-}" ]]              && cmd+=(--only-skew)
     [[ -n "${FORCE:-}" ]]                  && cmd+=(--force)
-    [[ -n "${DTYPE:-}" ]]                  && cmd+=(--dtype "$DTYPE")
-    [[ -n "${KV_CACHE_DTYPE:-}" ]]         && cmd+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
     [[ -n "${VARIANT:-}" ]]                && cmd+=(--variant "$VARIANT")
     [[ -n "${VERBOSITY:-}" ]]              && cmd+=($VERBOSITY)
 
