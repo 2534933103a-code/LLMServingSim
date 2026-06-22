@@ -121,10 +121,8 @@ def run(args: argparse.Namespace) -> int:
 def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
     """Read a LLMServingSim-format JSONL workload.
 
-    Skips agentic-session rows (with ``sub_requests``) — bench currently
-    handles only flat requests. Each row must carry ``input_tok_ids``;
-    bench cannot tokenize on the fly because the dataset's tokenizer may
-    differ from ``args.model``.
+    Flattens agentic sessions (rows with ``sub_requests``) into individual
+    requests chained sequentially.
     """
     requests: list[dict] = []
     with path.open() as f:
@@ -133,8 +131,28 @@ def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
             if not line:
                 continue
             row = json.loads(line)
+
             if "sub_requests" in row:
-                continue  # agentic sessions: not supported in bench yet
+                # Flatten agentic session: sub-requests run sequentially
+                session_arrival = row.get("arrival_time_ns", 0)
+                for j, sr in enumerate(row["sub_requests"]):
+                    if "input_tok_ids" not in sr or not sr["input_tok_ids"]:
+                        raise ValueError(
+                            f"Sub-request {j} missing input_tok_ids in {path}"
+                        )
+                    requests.append({
+                        "input_tok_ids": sr["input_tok_ids"],
+                        "input_toks": sr["input_toks"],
+                        "output_tok_ids": sr.get("output_tok_ids", []),
+                        "output_toks": sr["output_toks"],
+                        "arrival_time_ns": session_arrival,
+                        "_session_id": row.get("session_id"),
+                        "_sub_index": j,
+                        "_tool_delay_ns": sr.get("tool_duration_ns", 0),
+                        "_is_first": (j == 0),
+                    })
+                continue
+
             if "input_tok_ids" not in row or not row["input_tok_ids"]:
                 raise ValueError(
                     f"Row missing input_tok_ids in {path}; regenerate the "
@@ -224,13 +242,32 @@ async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt
     t0_loop = loop.time()
     completed = [0]  # boxed so the inner closure can mutate
 
+    # Build chaining events for agentic sessions
+    session_events: dict[int, list[asyncio.Event]] = {}
+    session_requests: dict[int, list[int]] = {}
+    for i, r in enumerate(requests):
+        sid = r.get("_session_id")
+        if sid is not None:
+            session_requests.setdefault(sid, []).append(i)
+    for sid, idxs in session_requests.items():
+        session_events[sid] = [asyncio.Event() for _ in idxs]
+
     with log.progress("Requests", total=len(requests)) as bar:
 
         async def _one(idx: int, req: dict) -> dict:
-            target = t0_loop + req["arrival_time_ns"] / 1e9
-            delay = target - loop.time()
-            if delay > 0:
-                await asyncio.sleep(delay)
+            # Scheduling: handle agentic session chaining
+            sid = req.get("_session_id")
+            sub_idx = req.get("_sub_index")
+            if sid is not None and sub_idx is not None and sub_idx > 0:
+                await session_events[sid][sub_idx - 1].wait()
+                tool_delay_s = req.get("_tool_delay_ns", 0) / 1e9
+                if tool_delay_s > 0:
+                    await asyncio.sleep(tool_delay_s)
+            else:
+                target = t0_loop + req["arrival_time_ns"] / 1e9
+                delay = target - loop.time()
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
             # Strict replay: pin output length to whatever the dataset
             # recorded. ``ignore_eos`` blocks early termination; ``min_tokens``
@@ -250,6 +287,11 @@ async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt
             async for output in engine.generate(prompt, sp, request_id):
                 if output.metrics is not None:
                     last_metrics = output.metrics
+
+            if sid is not None and sub_idx is not None:
+                evts = session_events.get(sid, [])
+                if sub_idx + 1 < len(evts):
+                    evts[sub_idx + 1].set()
 
             completed[0] += 1
             bar.advance()

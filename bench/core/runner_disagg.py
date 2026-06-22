@@ -116,7 +116,12 @@ def run(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
-    """Read a LLMServingSim-format JSONL workload."""
+    """Read a LLMServingSim-format JSONL workload.
+
+    Flattens agentic sessions (rows with ``sub_requests``) into individual
+    requests.  Sub-requests within a session are chained sequentially by
+    the driver — each waits for the previous to finish plus its tool delay.
+    """
     requests: list[dict] = []
     with path.open() as f:
         for line in f:
@@ -124,8 +129,28 @@ def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
             if not line:
                 continue
             row = json.loads(line)
+
             if "sub_requests" in row:
-                continue  # agentic sessions: not supported
+                # Flatten agentic session: sub-requests run sequentially
+                session_arrival = row.get("arrival_time_ns", 0)
+                for j, sr in enumerate(row["sub_requests"]):
+                    if "input_tok_ids" not in sr or not sr["input_tok_ids"]:
+                        raise ValueError(
+                            f"Sub-request {j} missing input_tok_ids in {path}"
+                        )
+                    requests.append({
+                        "input_tok_ids": sr["input_tok_ids"],
+                        "input_toks": sr["input_toks"],
+                        "output_tok_ids": sr.get("output_tok_ids", []),
+                        "output_toks": sr["output_toks"],
+                        "arrival_time_ns": session_arrival,
+                        "_session_id": row.get("session_id"),
+                        "_sub_index": j,
+                        "_tool_delay_ns": sr.get("tool_duration_ns", 0),
+                        "_is_first": (j == 0),
+                    })
+                continue
+
             if "input_tok_ids" not in row or not row["input_tok_ids"]:
                 raise ValueError(
                     f"Row missing input_tok_ids in {path}; regenerate the "
@@ -192,6 +217,16 @@ async def _submit_all(
     t0_loop = loop.time()
     completed = [0]  # boxed for inner closure
 
+    # Build chaining events for agentic sessions (sub-requests run sequentially)
+    session_events: dict[int, list[asyncio.Event]] = {}
+    session_requests: dict[int, list[int]] = {}  # session_id → list of request indices
+    for i, r in enumerate(requests):
+        sid = r.get("_session_id")
+        if sid is not None:
+            session_requests.setdefault(sid, []).append(i)
+    for sid, idxs in session_requests.items():
+        session_events[sid] = [asyncio.Event() for _ in idxs]
+
     with log.progress("Requests", total=len(requests)) as bar:
 
         async def _one(idx: int, req: dict) -> dict:
@@ -207,10 +242,23 @@ async def _submit_all(
                 "stream": True,
             }
 
-            target = t0_loop + req["arrival_time_ns"] / 1e9
-            delay = target - loop.time()
-            if delay > 0:
-                await asyncio.sleep(delay)
+            # Scheduling: handle agentic session chaining
+            sid = req.get("_session_id")
+            sub_idx = req.get("_sub_index")
+            if sid is not None and sub_idx is not None and sub_idx > 0:
+                # Wait for previous sub-request in session to complete
+                prev_event = session_events[sid][sub_idx - 1]
+                await prev_event.wait()
+                # Sleep for tool delay before sending next sub-request
+                tool_delay_s = req.get("_tool_delay_ns", 0) / 1e9
+                if tool_delay_s > 0:
+                    await asyncio.sleep(tool_delay_s)
+            else:
+                # First sub-request or standalone request: use arrival_time_ns
+                target = t0_loop + req["arrival_time_ns"] / 1e9
+                delay = target - loop.time()
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
             arrival = loop.time()
             first_token_ts: float | None = None
@@ -268,6 +316,12 @@ async def _submit_all(
                 log.warning("Request %d: timeout after %.1fs", idx, timeout)
             except Exception as exc:
                 log.warning("Request %d: %s", idx, exc)
+
+            # Signal next sub-request in the same session (if any)
+            if sid is not None and sub_idx is not None:
+                evts = session_events.get(sid, [])
+                if sub_idx + 1 < len(evts):
+                    evts[sub_idx + 1].set()
 
             completed[0] += 1
             bar.advance()
