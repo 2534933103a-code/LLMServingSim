@@ -238,12 +238,13 @@ async def _submit_all(
         async def _one(idx: int, req: dict) -> dict:
             n_out = int(req["output_toks"])
 
-            # Sliding window: truncate input_tok_ids from the left if they
-            # exceed max_model_len, keeping the most recent context.
+            # Sliding window: truncate input_tok_ids from the left if
+            # input + output exceeds max_model_len, keeping the most
+            # recent context.  Reserve room for output tokens.
             tok_ids = list(req["input_tok_ids"])
-            original_len = len(tok_ids)
-            if max_model_len and len(tok_ids) > max_model_len:
-                tok_ids = tok_ids[-max_model_len:]
+            if max_model_len and len(tok_ids) + n_out > max_model_len:
+                keep = max(1, max_model_len - n_out)
+                tok_ids = tok_ids[-keep:]
                 log.debug("Request %d: truncated input %d → %d tokens",
                           idx, original_len, len(tok_ids))
 
