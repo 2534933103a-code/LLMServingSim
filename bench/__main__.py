@@ -14,6 +14,13 @@ def main() -> int:
     from bench.core.runner import register_args as run_register
     run_register(p_run)
 
+    p_disagg = sub.add_parser(
+        "run_disagg",
+        help="Run a PD-separated vLLM benchmark (HTTP via proxy)",
+    )
+    from bench.core.runner_disagg import register_args as disagg_register
+    disagg_register(p_disagg)
+
     p_val = sub.add_parser("validate", help="Compare a bench run against simulator output")
     from bench.core.validate import register_args as val_register
     val_register(p_val)
@@ -23,6 +30,9 @@ def main() -> int:
     if args.cmd == "run":
         from bench.core.runner import run as run_bench
         return run_bench(args)
+    if args.cmd == "run_disagg":
+        from bench.core.runner_disagg import run as run_disagg
+        return run_disagg(args)
     if args.cmd == "validate":
         from bench.core.validate import run as run_validate
         return run_validate(args)

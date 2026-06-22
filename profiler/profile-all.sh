@@ -28,12 +28,12 @@ SKEW_KP_FACTOR="${SKEW_KP_FACTOR:-4.0}"
 SKEW_KVS_FACTOR="${SKEW_KVS_FACTOR:-4.0}"
 
 MODELS=(
-    "Qwen/Qwen3-4B"
-    # "Qwen/Qwen3-8B"
-    # "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    # "meta-llama/Llama-3.1-8B"
-    # "meta-llama/Llama-2-7b-hf"
-    # "meta-llama/Llama-2-13b-hf"
+    # "Qwen/Qwen3-4B"
+    "Qwen/Qwen3-8B"
+     "Qwen/Qwen3-30B-A3B-Instruct-2507"
+     "meta-llama/Llama-3.1-8B"
+    "meta-llama/Llama-2-7b-hf"
+     "meta-llama/Llama-2-13b-hf"
 )
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

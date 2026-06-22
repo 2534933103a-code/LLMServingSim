@@ -49,6 +49,9 @@ def register_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--data-parallel-size", type=int, default=1,
                    dest="data_parallel_size",
                    help="vLLM data_parallel_size (DP across engines).")
+    p.add_argument("--pipeline-parallel-size", type=int, default=1,
+                   dest="pipeline_parallel_size",
+                   help="vLLM pipeline_parallel_size (PP, layers split across GPUs).")
     p.add_argument("--enable-expert-parallel", action="store_true",
                    dest="enable_expert_parallel", default=False,
                    help="vLLM enable_expert_parallel for MoE models.")
@@ -159,6 +162,7 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
         model=args.model,
         tensor_parallel_size=args.tensor_parallel_size,
         data_parallel_size=args.data_parallel_size,
+        pipeline_parallel_size=args.pipeline_parallel_size,
         enable_expert_parallel=args.enable_expert_parallel,
         max_num_seqs=args.max_num_seqs,
         max_num_batched_tokens=args.max_num_batched_tokens,
@@ -287,7 +291,8 @@ def _record_from_metrics(idx: int, req: dict, metrics) -> dict:
 def _engine_kwargs_for_meta(engine_args) -> dict:
     fields = (
         "model", "tensor_parallel_size", "data_parallel_size",
-        "enable_expert_parallel", "max_num_seqs", "max_num_batched_tokens",
+        "pipeline_parallel_size", "enable_expert_parallel",
+        "max_num_seqs", "max_num_batched_tokens",
         "max_model_len", "dtype", "kv_cache_dtype", "seed",
     )
     return {k: getattr(engine_args, k, None) for k in fields}

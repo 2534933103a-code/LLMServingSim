@@ -85,26 +85,34 @@ def run(args: argparse.Namespace) -> int:
     # Plot + summary.
     # ------------------------------------------------------------------
     with log.stage("Rendering plots + summary"):
-        plots.plot_throughput(
-            output_dir, args.prefix,
-            bench_t=[r["t"] for r in bench_ts],
-            bench_prompt=[r["prompt_throughput"] for r in bench_ts],
-            bench_gen=[r["gen_throughput"] for r in bench_ts],
-            sim_t=[r["t"] for r in sim_ts],
-            sim_prompt=[r["prompt_throughput"] for r in sim_ts],
-            sim_gen=[r["gen_throughput"] for r in sim_ts],
-            title=args.title,
-        )
-        plots.plot_requests(
-            output_dir, args.prefix,
-            bench_t=[r["t"] for r in bench_ts],
-            bench_running=[r["running"] for r in bench_ts],
-            bench_waiting=[r["waiting"] for r in bench_ts],
-            sim_t=[r["t"] for r in sim_ts],
-            sim_running=[r["running"] for r in sim_ts],
-            sim_waiting=[r["waiting"] for r in sim_ts],
-            title=args.title,
-        )
+        # Throughput / running-waiting plots require timeseries.csv (only
+        # available in colocated bench mode, not in PD-disagg HTTP mode).
+        if bench_ts and sim_ts:
+            plots.plot_throughput(
+                output_dir, args.prefix,
+                bench_t=[r["t"] for r in bench_ts],
+                bench_prompt=[r["prompt_throughput"] for r in bench_ts],
+                bench_gen=[r["gen_throughput"] for r in bench_ts],
+                sim_t=[r["t"] for r in sim_ts],
+                sim_prompt=[r["prompt_throughput"] for r in sim_ts],
+                sim_gen=[r["gen_throughput"] for r in sim_ts],
+                title=args.title,
+            )
+            plots.plot_requests(
+                output_dir, args.prefix,
+                bench_t=[r["t"] for r in bench_ts],
+                bench_running=[r["running"] for r in bench_ts],
+                bench_waiting=[r["waiting"] for r in bench_ts],
+                sim_t=[r["t"] for r in sim_ts],
+                sim_running=[r["running"] for r in sim_ts],
+                sim_waiting=[r["waiting"] for r in sim_ts],
+                title=args.title,
+            )
+        else:
+            log.info("timeseries.csv not available — skipping throughput / "
+                     "running-waiting plots")
+
+        # Latency CDFs and summary only need per-request data (requests.jsonl)
         plots.plot_latency_cdfs(
             output_dir, args.prefix,
             bench_ttft, sim_ttft, bench_tpot, sim_tpot, bench_lat, sim_lat,
@@ -134,6 +142,8 @@ def _load_bench_requests(path: Path) -> list[dict]:
 
 
 def _load_bench_timeseries(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
     out: list[dict] = []
     with path.open() as f:
         r = csv.DictReader(f)
@@ -150,27 +160,35 @@ def _load_bench_timeseries(path: Path) -> list[dict]:
 
 
 def _bench_latencies(reqs: list[dict]) -> tuple[list[float], list[float], list[float]]:
-    """Compute TTFT / TPOT / e2e in milliseconds from RequestStateStats.
+    """Compute TTFT / TPOT / e2e in milliseconds.
 
-    vLLM currently records a mixed clock domain in ``requests.jsonl``:
-    ``arrival_time`` is wall-clock epoch seconds, while
-    ``queued_ts``/``scheduled_ts``/``first_token_ts``/``last_token_ts``
-    are monotonic engine timestamps. When that happens, use
-    ``queued_ts`` as the arrival anchor because it shares the same time
-    base as the rest of the per-request lifecycle.
+    For PD-disagg mode, TTFT uses ``prefill_ttft_s`` (proxy-injected prefill
+    completion time) when available — this aligns with the simulator's
+    definition (prefill processing only, no KV-transfer delay).
+
+    For colocated mode, TTFT is computed from ``first_token_ts - arrival_time``.
     """
     ttft, tpot, lat = [], [], []
     for r in reqs:
         arr, _ = _bench_arrival_ts(r)
         first = r.get("first_token_ts")
         last = r.get("last_token_ts")
-        if arr is None or first is None or last is None:
-            continue
         out_toks = max(1, int(r.get("output_toks", 1)))
-        ttft.append((first - arr) * 1000.0)
-        if out_toks > 1:
+
+        # Prefill-side TTFT (PD mode, proxy-injected) — preferred when available
+        prefill_ttft = r.get("prefill_ttft_s")
+        if prefill_ttft is not None:
+            ttft.append(prefill_ttft * 1000.0)
+        elif arr is not None and first is not None:
+            ttft.append((first - arr) * 1000.0)
+
+        if arr is not None and last is not None:
+            if arr is not None and last is not None:
+                lat.append((last - arr) * 1000.0)
+
+        if first is not None and last is not None and out_toks > 1:
             tpot.append((last - first) / (out_toks - 1) * 1000.0)
-        lat.append((last - arr) * 1000.0)
+
     return ttft, tpot, lat
 
 

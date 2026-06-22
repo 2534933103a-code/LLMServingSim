@@ -438,16 +438,43 @@ class MemoryModel():
         # Decrement old node's lock ref count, increment new node's lock ref count
         if not self.enable_prefix_caching:
             return
-        
+
         if device == Device.NPU:
+            # Estimate worst-case bytes that this insert would add to the
+            # radix tree.  If the tree is already full and nothing is
+            # evictable (all leaves locked by in-flight requests), skip
+            # the insertion entirely — the active KV cache stays in NPU
+            # memory but the prefix cache is not extended.  When the
+            # request finishes, cache_finished_req will unlock its prefix
+            # and evict, creating headroom for the next batch.
+            page_size = self.npu_prefix_cache.page_size
+            computed_len = req.num_computed_tokens
+            token_ids = (req.input_hash_ids + req.output_hash_ids)[:computed_len]
+            if page_size != 1 and not self.npu_prefix_cache.save_unfull_chunk:
+                page_aligned_len = len(token_ids) // page_size * page_size
+            else:
+                page_aligned_len = len(token_ids)
+            worst_case_bytes = page_aligned_len * self.npu_prefix_cache.kv_size
+            if worst_case_bytes > self.npu_prefix_cache.avail_size():
+                # Try to evict first.
+                self.evict_prefix_cache(worst_case_bytes - self.npu_prefix_cache.avail_size(), Device.NPU)
+                # If still not enough room and no evictable leaves remain,
+                # skip the insertion to avoid OOM.
+                if worst_case_bytes > self.npu_prefix_cache.avail_size() and self.npu_prefix_cache.evictable_size() == 0:
+                    self.logger.debug(
+                        "[node_id=%d,inst=%d] NPU prefix cache full — skipping "
+                        "cache_unfinished_req for req #%d",
+                        self.node_id, self.instance_id, req.id,
+                    )
+                    return
+
             new_last_node = self.npu_prefix_cache.cache_unfinished_req(req)
-            
+
             old_node = req.npu_last_node
             # print(f"[CACHE_UNFINISHED] req={req.id} old_node_id={old_node.id if old_node else None}(lock_ref={old_node.lock_ref if old_node else 'N/A'}) -> new_node_id={new_last_node.id}(lock_ref={new_last_node.lock_ref})")
             if old_node is not None and req._prefix_locked:
                 self.npu_prefix_cache.dec_lock_ref(old_node)
             self.npu_prefix_cache.inc_lock_ref(new_last_node)
-            # print(f"[CACHE_UNFINISHED] req={req.id} AFTER: old_node_id={old_node.id}(lock_ref={old_node.lock_ref}) new_node_id={new_last_node.id}(lock_ref={new_last_node.lock_ref})")
             req.npu_last_node = new_last_node
             req._prefix_locked = True
             if self.logger.isEnabledFor(logging.DEBUG):
@@ -468,7 +495,7 @@ class MemoryModel():
     def cache_finished_req(self, req, device):
         if not self.enable_prefix_caching:
             return
-        
+
         if device == Device.NPU:
             self.npu_prefix_cache.cache_finished_req(req)
             # Only dec_lock_ref if the request was locked
@@ -476,22 +503,24 @@ class MemoryModel():
             if not req._prefix_locked:
                 # Never locked → skip dec
                 pass
-                # print(f"[CACHE_FINISHED] req={req.id} node_id={node.id if node else None} lock_ref={node.lock_ref if node else 'N/A'} (SKIPPED dec - not locked)")
             else:
                 # print(f"[CACHE_FINISHED] req={req.id} node_id={node.id if node else None} lock_ref_BEFORE={node.lock_ref if node else 'N/A'}")
                 if node is not None:
                     self.npu_prefix_cache.dec_lock_ref(node)
                     req.npu_last_node = None
                 req._prefix_locked = False
-            # node = req.npu_last_node
-            # print(f"[CACHE_FINISHED] req={req.id} node_id={node.id if node else None} lock_ref_BEFORE={node.lock_ref if node else 'N/A'}")
-            # self.npu_prefix_cache.dec_lock_ref(req.npu_last_node)
-                # print(f"[CACHE_FINISHED] req={req.id} node_id={node.id if node else None} lock_ref_AFTER={node.lock_ref if node else 'N/A'}")
-            # print(f"[CACHE_FINISHED] req={req.id} evictable_size={self.npu_prefix_cache.evictable_size()} protected_size={self.npu_prefix_cache.protected_size()} total_size={self.npu_prefix_cache.total_size()}")
-            if self.logger.isEnabledFor(logging.DEBUG):
-                print(f"cache_finished_req of req {req.id}")
-                print(f"===============NPU PREFIX CACHE of Instance[{self.instance_id}]=================")
-                self.npu_prefix_cache.pretty_print()
+            # Process the insert's BlockStored events first so npu_used
+            # includes the new leaves before we evict (otherwise eviction
+            # may try to free more bytes than are currently tracked).
+            self.apply_kv_cache_events()
+            # After unlocking, aggressively evict evictable nodes to create
+            # headroom.  This is the primary mechanism that prevents the
+            # radix tree from filling NPU memory: every finished request
+            # unlocks its prefix, and we immediately evict whatever we can.
+            if self.npu_prefix_cache.evictable_size() > 0:
+                evictable_bytes = self.npu_prefix_cache.evictable_size() * self._bytes_per_token
+                self.evict_prefix_cache(evictable_bytes, Device.NPU)
+            return  # evict_prefix_cache already called apply_kv_cache_events
         elif device == Device.CPU or device == Device.CXL:
             self.second_tier_prefix_cache.cache_finished_req(req)
             if self.logger.isEnabledFor(logging.DEBUG):
@@ -583,24 +612,17 @@ class MemoryModel():
         npu_byte_free = 0
         cpu_byte_alloc = 0
         cpu_byte_free = 0
-        # self.npu_prefix_cache.take_events() -> [BlockStored, BlockStored, BlockRemoved, ...]
         for ev in self.npu_prefix_cache.take_events():
-            # print(f" current event block: {ev}")
             if isinstance(ev, BlockStored):
                 tlen = len(ev.token_ids)
                 for h in ev.block_hashes:
-                    # self._npu_cache_hashtolen[h] = tlen
                     if h in self._npu_cache_hashtolen:
                         self._npu_cache_hashtolen[h][1] += 1
-                        # if self._npu_cache_hashtolen[h][1] >= 2:
-                        #     print("duplicated hash occurs!! h : {}".format(h))
                     else:
                         self._npu_cache_hashtolen[h] = [tlen, 1]
                 npu_byte_alloc += self.get_kv(tlen)
             elif isinstance(ev, BlockRemoved):
                 for h in ev.block_hashes:
-                    # tlen = self._npu_cache_hashtolen.pop(h, 0)
-                    # if tlen == 0:
                     if h in self._npu_cache_hashtolen:
                         tlen = self._npu_cache_hashtolen[h][0]
                         self._npu_cache_hashtolen[h][1] -= 1
@@ -610,16 +632,36 @@ class MemoryModel():
                     else:
                         print(f"[HASH_MISS] BlockRemoved hash={h} NOT FOUND in map (map_size={len(self._npu_cache_hashtolen)})")
                         self.logger.warning(f"NPU prefix cache remove unknown block hash {h}")
-                    # else:
-                    #     print(f"[HASH_HIT] BlockRemoved hash={h} tlen={tlen}")
-                    # npu_byte_free += self.get_kv(tlen)
         # free first, then allocate
         if npu_byte_free > 0:
             self.free(npu_byte_free, Device.NPU)
+        # Proactive eviction: if memory is tight and there are evictable
+        # leaves, free them.  This is the complement to the aggressive
+        # eviction in cache_finished_req — it catches cases where
+        # BlockStored events arrive without a preceding dec_lock_ref.
+        if self.npu_prefix_cache.evictable_size() > 0 and self.npu_used > self.npu_mem * 0.95:
+            shortage = self.npu_used - int(self.npu_mem * 0.90)
+            space_needed = (shortage + self.npu_prefix_cache.kv_size - 1) // self.npu_prefix_cache.kv_size
+            if space_needed > 0:
+                self.npu_prefix_cache.evict(space_needed)
+                evict_byte_free = 0
+                for ev in self.npu_prefix_cache.take_events():
+                    if isinstance(ev, BlockRemoved):
+                        for h in ev.block_hashes:
+                            if h in self._npu_cache_hashtolen:
+                                tlen = self._npu_cache_hashtolen[h][0]
+                                self._npu_cache_hashtolen[h][1] -= 1
+                                if self._npu_cache_hashtolen[h][1] <= 0:
+                                    del self._npu_cache_hashtolen[h]
+                                evict_byte_free += self.get_kv(tlen)
+                            else:
+                                self.logger.warning(
+                                    "NPU prefix cache remove unknown block hash %s", h
+                                )
+                if evict_byte_free > 0:
+                    self.free(evict_byte_free, Device.NPU)
         if npu_byte_alloc > 0:
             self.allocate(npu_byte_alloc, Device.NPU)
-        # if npu_byte_free > 0:
-        #     self.free(npu_byte_free, Device.NPU)
 
         # Second-tier (CPU/CXL) prefix cache events.
         if self.prefix_storage is None:
@@ -650,6 +692,28 @@ class MemoryModel():
 
             if cpu_byte_free > 0:
                 self.free(cpu_byte_free, Device.CPU)
+            # Proactive eviction (same pattern as NPU above).
+            if self.second_tier_prefix_cache.evictable_size() > 0 and self.cpu_used > self.cpu_mem * 0.95:
+                shortage = self.cpu_used - int(self.cpu_mem * 0.90)
+                space_needed = (shortage + self.second_tier_prefix_cache.kv_size - 1) // self.second_tier_prefix_cache.kv_size
+                if space_needed > 0:
+                    self.second_tier_prefix_cache.evict(space_needed)
+                    evict_cpu_byte_free = 0
+                    for ev in self.second_tier_prefix_cache.take_events():
+                        if isinstance(ev, BlockRemoved):
+                            for h in ev.block_hashes:
+                                if h in self._cpu_cache_hashtolen:
+                                    tlen = self._cpu_cache_hashtolen[h][0]
+                                    self._cpu_cache_hashtolen[h][1] -= 1
+                                    if self._cpu_cache_hashtolen[h][1] <= 0:
+                                        del self._cpu_cache_hashtolen[h]
+                                    evict_cpu_byte_free += self.get_kv(tlen) * self.num_npus
+                                else:
+                                    self.logger.warning(
+                                        "CPU prefix cache remove unknown block hash %s", h
+                                    )
+                    if evict_cpu_byte_free > 0:
+                        self.free(evict_cpu_byte_free, Device.CPU)
             if cpu_byte_alloc > 0:
                 self.allocate(cpu_byte_alloc, Device.CPU)
         else:

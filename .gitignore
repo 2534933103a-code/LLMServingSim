@@ -24,4 +24,6 @@ outputs/
 
 profiler/perf/
 
-configs/
+vllm-0.19.0/**
+
+workloads/*.jsonl

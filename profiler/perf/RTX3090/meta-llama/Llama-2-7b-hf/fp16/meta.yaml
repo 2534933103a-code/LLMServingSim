@@ -3,12 +3,12 @@ vllm_version: 0.19.0
 cuda_version: '12.9'
 gpu: NVIDIA GeForce RTX 3090
 hardware: RTX3090
-profiled_at: '2026-06-10T04:51:37+00:00'
+profiled_at: '2026-06-21T21:43:38+00:00'
 architecture: llama
 architecture_sha256: 19d708000ec8a89edf1ca12dd388235b2cfe59007aaec6ea48702fb856ff2cfb
 model: meta-llama/Llama-2-7b-hf
 variant: fp16
-tp_degrees: [1, 2, 4, 8, 16]
+tp_degrees: [1, 2, 4, 8]
 engine_effective:
   load_format: dummy
   enforce_eager: true
@@ -22,33 +22,33 @@ engine_effective:
   max_num_seqs: 256
   hf_overrides:
     num_hidden_layers: 1
-    intermediate_size: 688
-    num_attention_heads: 2
-    num_key_value_heads: 2
-    vocab_size: 2000
+    intermediate_size: 1376
+    num_attention_heads: 4
+    num_key_value_heads: 4
+    vocab_size: 4000
   worker_extension_cls: profiler.core.hooks.extension.Extension
-  model: /tmp/profiler_model_y4r13879
+  model: /tmp/profiler_model_7dbcoti9
 attention_grid:
-  max_kv: 4096
+  max_kv: 40960
   chunk_factor: 2.0
   kv_factor: 2.0
   chunks: 0, 16-32768 x2
   n_decode: 0, 1-256 x2
-  kv: 0, 16-4096 x2
+  kv: 0, 16-40960 x2
 measurement_iterations: 3
 skew_profile:
   enabled: true
   factors:
     n: 2.0
     pc: 2.0
-    kp: 2.0
-    kvs: 2.0
+    kp: 4.0
+    kvs: 4.0
   grid:
     n: 2-256 x2
     ratio: [0.0625, 0.125, 0.25, 0.5, 0.75, 0.9]
     pc: 0, 16-32768 x2
-    kp: 0, 512-2048 x2
-    kvs: 128-4096 x2
+    kp: 0, 512-20480 x4
+    kvs: 128-40960 x4
     skew_rep: 4.0
 skew_fit:
   enabled: true
@@ -100,12 +100,3 @@ skew_fit:
       rel_err_p90: 0.0491
       rel_err_p99: 0.3979
       signed_mean: .nan
-    16:
-      method: per_bucket_wls_5axis
-      n_samples: 4293
-      alpha_default: 0.0339
-      bucket_table: tp16/skew_fit.csv
-      rel_err_p50: 0.0022
-      rel_err_p90: 0.037
-      rel_err_p99: 0.1536
-      signed_mean: .inf

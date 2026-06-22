@@ -1,0 +1,135 @@
+[0;36m
+============================================================
+  Memory & Communication Benchmark Suite
+  2026-06-20 19:25:27
+============================================================
+[0m
+[1;33m[System Info][0m
+  Hostname: ubuntu22
+  Kernel:   6.8.0-124-generic
+  CPU:      Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz
+  Cores:    16
+  Memory:   32.8 GB
+
+  GPU 0:      NVIDIA GeForce RTX 3090 ( 24576 MiB)
+  GPU 1:      NVIDIA GeForce RTX 3090 ( 24576 MiB)
+
+[1;33m[Build][0m
+make: 进入目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+All benchmarks built in ../bin/
+make: 离开目录“/home/vipuser/LLMServingSim/tools/mem_bench”
+[0;32m  Build OK[0m
+
+-----------------------------------------------------
+STREAM Bandwidth Benchmark (sequential, prefetcher-friendly)
+Array size = 200000000 elements (1600 MB each, 4.8 GB total)
+NTIMES = 20
+-----------------------------------------------------
+Operation      Time(ms)         MB/s         GB/s
+-----------------------------------------------------
+COPY             66.187    48347.9      48.35
+SCALE            63.744    50200.7      50.20
+ADD              86.317    55608.9      55.61
+TRIAD            86.329    55601.3      55.60
+-----------------------------------------------------
+
+-----------------------------------------------------
+Random-Access DRAM Bandwidth (pointer chasing, prefetcher-proof)
+Size            Lat(ns)         GB/s      M ops/s
+-----------------------------------------------------
+    268 MB       102.4       0.63        9.8
+    537 MB       109.2       0.59        9.2
+   1074 MB       117.8       0.54        8.5
+   2147 MB       129.1       0.50        7.7
+   4295 MB       139.9       0.46        7.1
+-----------------------------------------------------
+Note: Random-access bandwidth (no prefetcher help) is typically
+      5-10x lower than STREAM. This is the true DRAM throughput
+      for irregular access patterns (pointer chasing, hash lookups).
+============================================================
+CPU Memory Latency Benchmark (Pointer Chasing)
+============================================================
+
+  Sequential access (64B stride) (stride=64, freq=2.10 GHz):
+        16 KB	    4.4 cycles	   2.1 ns
+        64 KB	   10.1 cycles	   4.8 ns
+       256 KB	   10.2 cycles	   4.9 ns
+       512 KB	   10.9 cycles	   5.2 ns
+      2048 KB	   10.6 cycles	   5.1 ns
+      8192 KB	   10.8 cycles	   5.1 ns
+     16384 KB	   11.4 cycles	   5.4 ns
+     32768 KB	   16.4 cycles	   7.8 ns
+     65536 KB	   17.4 cycles	   8.3 ns
+    131072 KB	   16.7 cycles	   8.0 ns
+    262144 KB	   18.2 cycles	   8.7 ns
+  Page-level random (4KB stride) (stride=4096, freq=2.09 GHz):
+        16 KB	    4.4 cycles	   2.1 ns
+        64 KB	   10.8 cycles	   5.2 ns
+       256 KB	   11.1 cycles	   5.3 ns
+       512 KB	   18.1 cycles	   8.6 ns
+      2048 KB	   57.9 cycles	  27.6 ns
+      8192 KB	   76.1 cycles	  36.3 ns
+     16384 KB	   87.1 cycles	  41.6 ns
+     32768 KB	   89.1 cycles	  42.5 ns
+     65536 KB	  153.3 cycles	  73.2 ns
+    131072 KB	  217.2 cycles	 103.7 ns
+    262144 KB	  240.9 cycles	 115.0 ns
+==========================================================
+GPU: NVIDIA GeForce RTX 3090
+Compute Capability: 8.6
+Global Memory: 25.3 GB
+SM Count: 82
+Max Clock Rate: 1.70 GHz
+Memory Clock Rate: 9.75 GHz
+Memory Bus Width: 384 bits
+L2 Cache: 6.3 MB
+PCIe Gen: 0, NumLink: 0
+==========================================================
+
+==========================================
+GPU Device-to-Device Bandwidth
+==========================================
+       17 MB:     0.047 ms     714.4 GB/s
+       67 MB:     0.165 ms     813.5 GB/s
+      268 MB:     0.638 ms     841.5 GB/s
+      537 MB:     1.266 ms     848.1 GB/s
+     1074 MB:     2.522 ms     851.5 GB/s
+
+==========================================
+GPU Device Memory Latency (Pointer Chasing)
+==========================================
+       32 KB:    247 cycles    176.4 ns
+      128 KB:    248 cycles    177.1 ns
+     1024 KB:    496 cycles    354.3 ns
+     4096 KB:    496 cycles    354.3 ns
+    16384 KB:    496 cycles    354.3 ns
+    65536 KB:    496 cycles    354.3 ns
+   262144 KB:    498 cycles    355.7 ns
+
+==========================================
+CPU-GPU Communication Bandwidth
+==========================================
+
+Size               H2D ms     H2D GB/s       D2H ms     D2H GB/s
+----------------------------------------------------------------
+       1 MB        1.097        1.0      0.150        7.0
+       8 MB        0.578       14.5      1.175        7.1
+      67 MB        6.391       10.5      9.135        7.3
+     268 MB       27.658        9.7     36.844        7.3
+
+==========================================
+CPU-GPU Communication Latency (small transfer)
+==========================================
+
+Bytes            H2D us       D2H us       RTT us
+-------------------------------------------------------
+  4               4.77       5.96       7.87
+  64              4.77       5.96       7.87
+  1024            4.77       5.96       7.87
+  4096            4.77       5.96       8.82
+  16384           5.96       7.87      12.87
+  65536          13.83      13.83      36.95
+  262144         30.04      39.82      86.07
+  1048576       105.86     144.00     303.03
+
+Done.

@@ -1,0 +1,30 @@
+{
+  "num_nodes": 1,
+  "link_bw": 9.7,
+  "link_latency": 6910,
+  "nodes": [
+    {
+      "num_instances": 1,
+      "cpu_mem": {
+        "mem_size": 32,
+        "mem_bw": 52.4,
+        "mem_latency": 112.7
+      },
+      "instances": [
+        {
+          "model_name": "meta-llama/Llama-2-7b-hf",
+          "hardware": "RTX3090",
+          "npu_mem": {
+            "mem_size": 24,
+            "mem_bw": 851.5,
+            "mem_latency": 353.7
+          },
+          "num_npus": 2,
+          "tp_size": 2,
+          "pp_size":1,
+          "pd_type": null
+        }
+      ]
+    }
+  ]
+}
