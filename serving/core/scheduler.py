@@ -187,7 +187,7 @@ class Scheduler:
                 if self.memory.is_avail(kv_size + load_size, Device.NPU):
                     temp_len = i
                     break
-            
+
             # ============ STEP 3: Eviction if needed ============
             while temp_len == 0:
                 # print("Evict Request to CPU due to memory limitation")
@@ -321,7 +321,7 @@ class Scheduler:
             # add scheduled_tokens to batch for debugging
             batch.scheduled_tokens = scheduled_tokens
             return batch
-        
+
         # Schedule already batched request
         else:
             if len(self.inflight) == 0:
@@ -489,15 +489,29 @@ class Scheduler:
             while temp_len == 0:
                 # print("eviction occurs!!")
                 if len(gen_req) == 0:
-                    # print("gen_req length == 0 (No decode) => return None (No Batch)")
-                    # No request to evict but no memory - rollback prefix cache lock
-                    for req in batch_req:
-                        if req.is_prefill() and req._prefix_locked:
-                            
-                            self.memory.unlock_prefix(req, Device.NPU)
-                            self.memory.erase_prefix_info(req)
-                            req._prefix_locked = False
-                    return None
+                    # No decode request to evict — try to free space from the
+                    # prefix cache instead (vLLM's evictor runs on the tree
+                    # when the block pool is exhausted).
+                    if self.memory.evictable_size(Device.NPU) > 0 and batch_len > 0:
+                        kv_size_min = self.memory.get_block_kv(batch_req, 1, scheduled_tokens)
+                        need = kv_size_min - self.memory.avail_size(Device.NPU)
+                        if need > 0:
+                            self.memory.evict_prefix_cache(need, Device.NPU)
+                        # Re-evaluate after tree eviction
+                        total_useable_size = self.memory.avail_size(Device.NPU) + self.memory.evictable_size(Device.NPU)
+                        for i in range(batch_len, -1, -1):
+                            kv_size = self.memory.get_block_kv(batch_req, i, scheduled_tokens)
+                            if total_useable_size >= kv_size:
+                                temp_len = i
+                                break
+                    if temp_len == 0:
+                        # Still cannot form a batch — rollback prefix locks and give up.
+                        for req in batch_req:
+                            if req.is_prefill() and req._prefix_locked:
+                                self.memory.unlock_prefix(req, Device.NPU)
+                                self.memory.erase_prefix_info(req)
+                                req._prefix_locked = False
+                        return None
                 
                 # Check already evicted request
                 if gen_req[-1].evict:
@@ -509,12 +523,12 @@ class Scheduler:
                     gen_req = gen_req[:-1]
                     continue
 
-                # Evict the last decode request
-                # (DEPRECATED) self.memory.unlock_prefix(gen_req[-1], Device.NPU)
-                # (DEPRECATED) self.memory.erase_prefix_info(gen_req[-1])
-                if gen_req[-1].is_prefill() and getattr(gen_req[-1], '_prefix_locked', False):
+                # Evict the last decode request — release its prefix lock
+                # so the radix tree can reclaim those tokens.  Applies to
+                # both prefill and decode requests (decode requests acquire
+                # locks via cache_unfinished_req in add_done).
+                if getattr(gen_req[-1], '_prefix_locked', False):
                     self.memory.unlock_prefix(gen_req[-1], Device.NPU)
-                    # self.memory.erase_prefix_info(gen_req[-1])
                     gen_req[-1]._prefix_locked = False
                 
                 current_usable_size = self.memory.avail_size(Device.NPU) + self.memory.evictable_size(Device.NPU)

@@ -189,11 +189,11 @@ class MemoryModel():
                 
                 # Calculate blocks needed (cumulative)
                 blocks_after = (total_after + self.block_size - 1) // self.block_size
-                if req.evict:
-                    # All blocks were freed during eviction; need to reload everything
-                    blocks_before = 0
-                else:
-                    blocks_before = (computed_before + self.block_size - 1) // self.block_size if computed_before > 0 else 0
+                # Evicted requests: only count incremental blocks here.
+                # Full reload of evicted blocks is accounted separately by
+                # Scheduler._get_reload_size() → Scheduler.load_size,
+                # matching vLLM's separation of swap-in from new allocation.
+                blocks_before = (computed_before + self.block_size - 1) // self.block_size if computed_before > 0 else 0
                 
                 new_blocks = max(0, blocks_after - blocks_before)
                 block_kv_size += self.get_kv(new_blocks * self.block_size)
