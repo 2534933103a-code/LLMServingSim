@@ -56,6 +56,10 @@ def register_args(p: argparse.ArgumentParser) -> None:
                    dest="log_level",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="Logger verbosity (default: INFO).")
+    p.add_argument("--max-model-len", type=int, default=None,
+                   dest="max_model_len",
+                   help="Sliding window: truncate input_tok_ids from the left "
+                        "if they exceed this length (default: no truncation).")
     p.add_argument("--request-timeout", type=float, default=600.0,
                    dest="request_timeout",
                    help="Per-request HTTP timeout in seconds (default: 600).")
@@ -191,6 +195,7 @@ async def _drive(
         records = await _submit_all(
             endpoint, args.model, requests,
             timeout=args.request_timeout,
+            max_model_len=args.max_model_len,
         )
 
     # Stop polling and collect final samples
@@ -209,6 +214,7 @@ async def _submit_all(
     model: str,
     requests: list[dict],
     timeout: float = 600.0,
+    max_model_len: int | None = None,
 ) -> list[dict]:
     """Schedule each request at its arrival offset, gather timing via SSE."""
     import aiohttp
@@ -232,9 +238,18 @@ async def _submit_all(
         async def _one(idx: int, req: dict) -> dict:
             n_out = int(req["output_toks"])
 
+            # Sliding window: truncate input_tok_ids from the left if they
+            # exceed max_model_len, keeping the most recent context.
+            tok_ids = list(req["input_tok_ids"])
+            original_len = len(tok_ids)
+            if max_model_len and len(tok_ids) > max_model_len:
+                tok_ids = tok_ids[-max_model_len:]
+                log.debug("Request %d: truncated input %d → %d tokens",
+                          idx, original_len, len(tok_ids))
+
             payload = {
                 "model": model,
-                "prompt": list(req["input_tok_ids"]),
+                "prompt": tok_ids,
                 "max_tokens": n_out,
                 "min_tokens": n_out,
                 "ignore_eos": True,

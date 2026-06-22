@@ -204,7 +204,8 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
     try:
         with log.stage(f"Submitting {len(requests)} requests"):
             records = await _submit_all(
-                engine, requests, SamplingParams, TokensPrompt
+                engine, requests, SamplingParams, TokensPrompt,
+                max_model_len=args.max_model_len,
             )
     finally:
         with log.stage("Shutting AsyncLLM down"):
@@ -236,7 +237,8 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
     )
 
 
-async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt) -> list[dict]:
+async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt,
+                      max_model_len: int | None = None) -> list[dict]:
     """Schedule each request at its arrival offset, gather metrics."""
     loop = asyncio.get_event_loop()
     t0_loop = loop.time()
@@ -269,10 +271,12 @@ async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt
                 if delay > 0:
                     await asyncio.sleep(delay)
 
-            # Strict replay: pin output length to whatever the dataset
-            # recorded. ``ignore_eos`` blocks early termination; ``min_tokens``
-            # blocks vLLM's async-scheduling early-exit (see vllm/v1/engine/
-            # async_llm.py:async-scheduling block) so n_out is exactly fixed.
+            # Sliding window: truncate input_tok_ids from the left if they
+            # exceed max_model_len, keeping the most recent context.
+            tok_ids = list(req["input_tok_ids"])
+            if max_model_len and len(tok_ids) > max_model_len:
+                tok_ids = tok_ids[-max_model_len:]
+
             n_out = int(req["output_toks"])
             sp = SamplingParams(
                 min_tokens=n_out,
@@ -280,7 +284,7 @@ async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt
                 ignore_eos=True,
                 temperature=0.0,
             )
-            prompt = TokensPrompt(prompt_token_ids=list(req["input_tok_ids"]))
+            prompt = TokensPrompt(prompt_token_ids=tok_ids)
             request_id = f"bench-{idx}"
 
             last_metrics = None

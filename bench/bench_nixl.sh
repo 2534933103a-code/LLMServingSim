@@ -354,6 +354,7 @@ cmd=(python3 -m bench run_disagg
     --tick-seconds "$TICK_SECONDS"
     --num-reqs "$NUM_REQS"
     --log-level "$LOG_LEVEL"
+    --max-model-len "$MAX_MODEL_LEN"
 )
 
 echo "Running: ${cmd[*]}"
