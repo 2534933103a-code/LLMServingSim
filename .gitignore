@@ -24,6 +24,14 @@ outputs/
 
 profiler/perf/
 
-vllm-0.19.0/**
+vllm-0.19.0/
 
-workloads/*.jsonl
+# Logs
+*.log
+tools/mem_bench/logs/
+
+# OS / editor junk
+.DS_Store
+*.swp
+*.swo
+
