@@ -28,8 +28,8 @@ cd "$REPO_ROOT"
 # =============================================================================
 # EDIT THESE
 # =============================================================================
-MODEL="${MODEL:-Qwen/Qwen3-4B}"
-DATASET="${DATASET:-workloads/agent_trace_test.jsonl}"
+MODEL="${MODEL:-meta-llama/Llama-2-7b-hf}"
+DATASET="${DATASET:-workloads/myllama-2-7b-pd.jsonl}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-bench/results/$RUN_ID}"
 
@@ -45,8 +45,8 @@ PROXY_PORT="${PROXY_PORT:-8000}"
 TP="${TP:-1}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-2048}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-40960}"
-DTYPE="${DTYPE:-bfloat16}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
+DTYPE="${DTYPE:-float16}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-auto}"
 LOAD_FORMAT="${LOAD_FORMAT:-dummy}"  # 'auto' to download real weights
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.9}"
@@ -80,6 +80,7 @@ kill_gpu_processes() {
     echo "Cleaning up GPU processes..."
     pgrep -f "vllm serve" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
     pgrep -f "nixl_proxy" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    pgrep -f "VLLM::EngineCore" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
     for port in $(echo "$PREFILL_PORTS" "$DECODE_PORTS" "$PROXY_PORT" | tr ',' ' '); do
         lsof -ti:"$port" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
     done
@@ -172,6 +173,13 @@ echo "Dependencies OK."
 # =============================================================================
 
 mkdir -p "$OUTPUT_DIR"
+
+# Kill any residual VLLM::EngineCore processes from prior runs
+# (these are orphaned when the parent vllm serve process is killed)
+echo "Pre-start cleanup: checking for residual GPU processes..."
+pgrep -f "VLLM::EngineCore" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+pgrep -f "vllm serve" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+sleep 1
 
 # Parse comma-separated lists into arrays
 IFS=',' read -ra PREFILL_GPU_ARR <<< "$PREFILL_GPUS"
