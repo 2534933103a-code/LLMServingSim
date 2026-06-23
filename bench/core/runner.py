@@ -300,8 +300,8 @@ async def _submit_all(engine, requests: list[dict], SamplingParams, TokensPrompt
 
             if sid is not None and sub_idx is not None:
                 evts = session_events.get(sid, [])
-                if sub_idx + 1 < len(evts):
-                    evts[sub_idx + 1].set()
+                if sub_idx < len(evts):
+                    evts[sub_idx].set()
 
             completed[0] += 1
             bar.advance()

@@ -55,8 +55,9 @@ _THEME = Theme({
     "bench.banner":          "magenta bold",
 })
 
-# stdout, soft-wrapped, no forced terminal — Rich auto-detects TTY.
-_console = Console(theme=_THEME, soft_wrap=True)
+# stdout, soft-wrapped, force terminal so Rich always uses live
+# ANSI refresh – required when piped through `tee` (2>&1 | tee).
+_console = Console(theme=_THEME, soft_wrap=True, force_terminal=True)
 
 _logger = logging.getLogger("bench")
 _configured = False
