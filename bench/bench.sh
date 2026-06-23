@@ -19,8 +19,8 @@ cd "$REPO_ROOT"
 # =============================================================================
 # EDIT THESE
 # =============================================================================
-MODEL="${MODEL:-meta-llama/Llama-2-7b-hf}"
-DATASET="${DATASET:-workloads/myllama-2-7b-heavy.jsonl}"
+MODEL="${MODEL:-Qwen/Qwen3-4B}"
+DATASET="${DATASET:-workloads/agent_trace_test.jsonl}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-bench/results/$RUN_ID}"
 
@@ -30,15 +30,41 @@ PP="${PP:-1}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-2048}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-}"   # blank => use the model default
-DTYPE="${DTYPE:-float16}"
+DTYPE="${DTYPE:-bfloat16}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-auto}"
 LOAD_FORMAT="${LOAD_FORMAT:-dummy}"  # 'auto' to download real weights
 SEED="${SEED:-42}"
 TICK_SECONDS="${TICK_SECONDS:-0.5}"
 NUM_REQS="${NUM_REQS:-0}"            # 0 => replay the full dataset
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
+NO_ENABLE_PREFIX_CACHING="${NO_ENABLE_PREFIX_CACHING:-0}"  # 1 = use --no-enable-prefix-caching
 
 EXPERT_PARALLEL="${EXPERT_PARALLEL:-0}"   # 1 to enable for MoE
+
+# =============================================================================
+# CLEANUP
+# =============================================================================
+
+kill_gpu_processes() {
+    echo "Cleaning up GPU processes..."
+    pgrep -f "vllm serve" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    pgrep -f "VLLM::EngineCore" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    sleep 1
+    echo "Cleanup done."
+}
+
+cleanup() {
+    local exit_code=$?
+    echo ""
+    echo "Shutting down (exit code: $exit_code)..."
+    kill_gpu_processes
+    echo "All processes stopped."
+    exit $exit_code
+}
+trap cleanup INT TERM EXIT
+
+echo "Pre-start cleanup: checking for residual GPU processes..."
+kill_gpu_processes
 
 # =============================================================================
 # EXECUTE
@@ -61,12 +87,21 @@ cmd=(python3 -m bench run
     --tick-seconds "$TICK_SECONDS"
     --num-reqs "$NUM_REQS"
     --log-level "$LOG_LEVEL"
-    # --no-enable-prefix-caching
 )
 
 [[ -n "$MAX_MODEL_LEN" ]] && cmd+=(--max-model-len "$MAX_MODEL_LEN")
 [[ "$EXPERT_PARALLEL" == "1" ]] && cmd+=(--enable-expert-parallel)
+[[ "$NO_ENABLE_PREFIX_CACHING" == "1" ]] && cmd+=(--no-enable-prefix-caching)
 
 echo "Running: ${cmd[*]}"
-"${cmd[@]}"
+set +o pipefail  # allow capturing exit code from pipe
+"${cmd[@]}" 2>&1 | tee "$OUTPUT_DIR/console.log"
+BENCH_EXIT_CODE=${PIPESTATUS[0]}
+set -o pipefail
 echo "Done. Results in: $OUTPUT_DIR"
+echo "  - meta.json"
+echo "  - requests.jsonl"
+echo "  - vllm.log   (vLLM scheduler / engine events, via Python logging)"
+echo "  - console.log (raw stdout+stderr, includes C-level messages)"
+
+exit $BENCH_EXIT_CODE

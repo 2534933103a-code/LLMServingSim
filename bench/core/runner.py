@@ -199,6 +199,10 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
             engine = AsyncLLM.from_engine_args(
                 engine_args, stat_loggers=[BenchStatLogger]
             )
+
+    # Persist vLLM runtime logs alongside results (scheduler / memory events)
+    log.add_vllm_file_log(str(output_dir / "vllm.log"))
+
     started_at = datetime.datetime.utcnow().isoformat() + "Z"
 
     try:

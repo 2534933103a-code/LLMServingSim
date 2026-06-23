@@ -101,6 +101,24 @@ def configure(level: int | str = logging.INFO) -> None:
         logging.getLogger(name).setLevel(vllm_level)
 
 
+def add_vllm_file_log(path: str, *, level: int = logging.INFO) -> None:
+    """Mirror vLLM log messages to *path* so they are persisted alongside results."""
+    from logging import FileHandler, Formatter
+
+    h = FileHandler(path, encoding="utf-8")
+    h.setLevel(level)
+    h.setFormatter(Formatter(
+        "%(asctime)s [%(name)s] %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    for name in ("vllm", "vllm.engine", "vllm.worker", "vllm.executor",
+                 "vllm.config", "vllm.model_executor", "vllm.distributed",
+                 "vllm.v1", "vllm.core"):
+        logger = logging.getLogger(name)
+        logger.setLevel(min(logger.level, level))
+        logger.addHandler(h)
+
+
 @contextmanager
 def capture_stdio() -> Iterator[None]:
     """Redirect C-level fd 1 and 2 to a tmpfile during the ``with`` block.
