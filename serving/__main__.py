@@ -860,6 +860,14 @@ def main():
                             f"{cxl_util:.3f} % Used"
                         )
 
+            ######### Remaining requests #########
+            total_loaded = len(router._pending_requests)
+            remaining = total_loaded - req_cnt
+            print_markup(
+                f"{log_indent+tree_indent}"
+                f"Done: {req_cnt}/{total_loaded}, Remaining: {remaining}"
+            )
+
             ######### Power Modeling #########
             if power_modeling:
                 tree_indent = '└─'
