@@ -22,8 +22,8 @@ ATTENTION_KV_FACTOR="${ATTENTION_KV_FACTOR:-2.0}"
 # jitter (~15-25% on large GEMMs → ~5%) at ~3x profile time.
 MEASUREMENT_ITERATIONS="${MEASUREMENT_ITERATIONS:-3}"
 
-SKEW_N_FACTOR="${SKEW_N_FACTOR:-2.0}"
-SKEW_PC_FACTOR="${SKEW_PC_FACTOR:-2.0}"
+SKEW_N_FACTOR="${SKEW_N_FACTOR:-4.0}"
+SKEW_PC_FACTOR="${SKEW_PC_FACTOR:-4.0}"
 SKEW_KP_FACTOR="${SKEW_KP_FACTOR:-4.0}"
 SKEW_KVS_FACTOR="${SKEW_KVS_FACTOR:-4.0}"
 
@@ -31,9 +31,9 @@ MODELS=(
     # "Qwen/Qwen3-4B"
     "Qwen/Qwen3-8B"
      "Qwen/Qwen3-30B-A3B-Instruct-2507"
-     "meta-llama/Llama-3.1-8B"
-    "meta-llama/Llama-2-7b-hf"
-     "meta-llama/Llama-2-13b-hf"
+    #  "meta-llama/Llama-3.1-8B"
+    # "meta-llama/Llama-2-7b-hf"
+    #  "meta-llama/Llama-2-13b-hf"
 )
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
