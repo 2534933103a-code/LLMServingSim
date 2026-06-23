@@ -861,11 +861,11 @@ def main():
                         )
 
             ######### Remaining requests #########
-            total_loaded = len(router._pending_requests)
-            remaining = total_loaded - req_cnt
+            total_reqs = router._next_request_id  # includes deferred sub-requests
+            remaining = total_reqs - req_cnt
             print_markup(
                 f"{log_indent+tree_indent}"
-                f"Done: {req_cnt}/{total_loaded}, Remaining: {remaining}"
+                f"Done: {req_cnt}/{total_reqs}, Remaining: {remaining}"
             )
 
             ######### Power Modeling #########
