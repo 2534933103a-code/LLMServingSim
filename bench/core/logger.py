@@ -116,7 +116,10 @@ def add_vllm_file_log(path: str, *, level: int = logging.INFO) -> None:
                  "vllm.config", "vllm.model_executor", "vllm.distributed",
                  "vllm.v1", "vllm.core"):
         logger = logging.getLogger(name)
-        logger.setLevel(min(logger.level, level))
+        # Use effective level (walking the hierarchy) so that loggers
+        # inheriting ERROR from a parent (e.g. vllm after configure())
+        # are explicitly lowered.  min() keeps a DEBUG level untouched.
+        logger.setLevel(min(logger.getEffectiveLevel(), level))
         logger.addHandler(h)
 
 

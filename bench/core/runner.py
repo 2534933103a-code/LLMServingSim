@@ -28,6 +28,7 @@ import datetime
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 
 from bench.core import logger as log
@@ -200,8 +201,24 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
                 engine_args, stat_loggers=[BenchStatLogger]
             )
 
-    # Persist vLLM runtime logs alongside results (scheduler / memory events)
-    log.add_vllm_file_log(str(output_dir / "vllm.log"))
+    # Persist vLLM runtime logs alongside results (scheduler / memory events).
+    # Same principle as bench_nixl.sh's `vllm serve > "$logfile" 2>&1`:
+    # redirect fd 2 directly to the file so ALL vLLM output (Python logging +
+    # C-level prints) is captured without fighting Python logger hierarchy.
+    vllm_log_path = str(output_dir / "vllm.log")
+    saved_stderr = os.dup(2)
+    vllm_log_fd = os.open(vllm_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    os.dup2(vllm_log_fd, 2)
+    os.close(vllm_log_fd)
+    # Also ensure Python-level vLLM loggers emit at INFO level (they may have
+    # been clamped to ERROR by configure() during boot).
+    _VLLM_LOGGERS = (
+        "vllm", "vllm.engine", "vllm.worker", "vllm.executor",
+        "vllm.config", "vllm.model_executor", "vllm.distributed",
+        "vllm.v1", "vllm.core",
+    )
+    for _name in _VLLM_LOGGERS:
+        logging.getLogger(_name).setLevel(logging.INFO)
 
     started_at = datetime.datetime.utcnow().isoformat() + "Z"
 
@@ -212,6 +229,9 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
                 max_model_len=args.max_model_len,
             )
     finally:
+        # Restore fd 2 before shutdown so shutdown messages go to the terminal
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stderr)
         with log.stage("Shutting AsyncLLM down"):
             engine.shutdown()
 
